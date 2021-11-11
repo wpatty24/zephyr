@@ -256,6 +256,7 @@ GTEXT(z_riscv_configure_stack_guard)
 
 /* exports */
 GTEXT(__irq_wrapper)
+GTEXT(_isr_wrapper)
 
 /* use ABI name of registers for the sake of simplicity */
 
@@ -279,6 +280,9 @@ GTEXT(__irq_wrapper)
  * If CONFIG_RISCV_SOC_CONTEXT_SAVE=y, calls to SoC-level context save/restore
  * routines are also made here. For details, see the Kconfig help text.
  */
+
+SECTION_FUNC(exception.entry, _isr_wrapper)
+	j __irq_wrapper 
 
 /*
  * Handler called upon each exception/interrupt/fault

@@ -21,6 +21,7 @@ config RISCV_HAS_PLIC
 config RISCV_MTVEC_VECTORED_MODE
 	bool "Should the SOC use mtvec in vectored mode"
 	depends on SOC_FAMILY_RISCV_PRIVILEGE
+	depends on GEN_IRQ_VECTOR_TABLE
 	help
 	  Should the SOC use mtvec in vectored mode
 

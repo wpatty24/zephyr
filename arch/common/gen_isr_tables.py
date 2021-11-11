@@ -149,8 +149,96 @@ def write_source_file(fp, vt, swt, intlist, syms):
 
     if vt:
         fp.write("uintptr_t __irq_vector_table _irq_vector_table[%d] = {\n" % nv)
-        for i in range(nv):
-            fp.write("\t{},\n".format(vt[i]))
+
+        # RISC-V handled uniquely
+        if "CONFIG_RISCV" in syms:
+            op_codes_per_entry = 1
+
+            if "CONFIG_64BIT" in syms:
+                op_codes_per_entry = 2
+
+            _isr_wrapper_addr = syms["_isr_wrapper"]
+
+            # Start "program counter" at the base address of vector table
+            pc = syms["_irq_vector_table"]
+
+            for i in range(0, nv, op_codes_per_entry):
+                # Write header of this entry
+                fp.write("\t0x")
+
+                # Regardless of the architecture, RISC-V op codes are always
+                # 4 bytes wide. Since _irq_vector_table is defined as an array
+                # of uintptr_t, op codes don't map 1:1 with entries. For 64-bit
+                # case, we must pack two op codes into one entry. This loop
+                # handles that case.
+                for j in range(op_codes_per_entry, 0, -1):
+                    # For RISC-V, a table of addresses doesn't work. RISC-V
+                    # expects the vector table to be encoded as instruction code.
+                    # For _irq_vector_table, each entry will be a jump instruction
+                    # to the appropriate handler. Jump instruction can be encoded
+                    # as follows:
+                    #
+                    #
+                    #                    JALR Encoding Format
+                    # |    31   |   30-21   |   20    |   19-16    | 11-7 | 6-0  |
+                    # | imm[20] | imm[10:1] | imm[11] | imm[19:16] |  rd  | 0x6F |
+                    #
+                    # NOTE: imm is encoded as a 20-bit offset relative to
+                    #       instruction address. This can be thought of as
+                    #       relative to Program Counter (PC) since PC will be
+                    #       equal to instruction address when this code is
+                    #       executed.
+                    #
+                    # NOTE: For this code, imm = offset; rd = x0 = 0;
+
+                    # If within bounds of nv, then process normally
+                    if (i + j - 1) < nv:
+                        func = vt[i + j - 1]
+
+                        # For DIRECT IRQs, func is an address
+                        if isinstance(func, int):
+                            offset = func - pc - 4 * (j - 1)
+                        # Default others to _isr_wrapper
+                        else:
+                            offset = _isr_wrapper_addr - pc - 4 * (j - 1)
+
+                        # Assuming that offset is never negative
+                        # offset can't be larger than 20-bits (see above)
+                        assert offset <= (1 << 20), "offset is more than 1MB"
+
+                        # JALR with rd = x0 = 0
+                        op_code = 0x06F
+
+                        # Encode offset (imm) as described by table above
+                        op_code |= ((offset >> 0x01) & 0x3FF) << 21
+                        op_code |= ((offset >> 0x0B) & 0x001) << 20
+                        op_code |= ((offset >> 0x0C) & 0x0FF) << 12
+                        op_code |= ((offset >> 0x14) & 0x001) << 31
+
+                        # Convert to 4-byte tuple
+                        op_code = struct.unpack("<BBBB",
+                                                struct.pack("<L", op_code))
+
+                    # Case for nv is odd and CONFIG_64_BIT is set
+                    else:
+                        op_code = (0, 0, 0, 0)
+
+                    # Write out the op_code as an "address"
+                    fp.write("{:02x}{:02x}{:02x}{:02x}".format(op_code[3],
+                                                               op_code[2],
+                                                               op_code[1],
+                                                               op_code[0]))
+
+                # Move program counter for each entry
+                pc += 4 * op_codes_per_entry
+
+                # Write footer fo this entry
+                fp.write(",\n")
+
+        # All other architectures
+        else:
+            for i in range(nv):
+                fp.write("\t{},\n".format(vt[i]))
         fp.write("};\n")
 
     if not swt:

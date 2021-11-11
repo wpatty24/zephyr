@@ -131,6 +131,9 @@ SECTIONS
     SECTION_PROLOGUE(_RESET_SECTION_NAME,,)
     {
 		KEEP(*(.reset.*))
+		/* TODO: Is this the correct location in linker?? */
+		. = ALIGN(256);
+		KEEP(*(.gnu.linkonce.irq_vector_table))
     } GROUP_LINK_IN(ROMABLE_REGION)
 
     SECTION_PROLOGUE(_EXCEPTION_SECTION_NAME,,)
